@@ -1,5 +1,5 @@
 import {ObjectId} from 'mongodb';
-import {Request, Response} from 'express';
+import {request, Request, Response} from 'express';
 import {joiValidation} from '../../../global/decorators/joi-validation.decoratore';
 import {signupSchema} from '../schemes/signup';
 import {IAuthDocument, ISignUpData} from '../interfaces/auth.interface';
@@ -8,9 +8,12 @@ import {BadRequestError} from '../../../utility/error.handler.utility';
 import {Helpers} from '../../../utility/helper.utility';
 import HTTP_STATUS from 'http-status-codes';
 import {IUserDocument} from '../../user/interface/user.interface';
-import {UserCache} from '../../../global/redis/user.cache';
-import {omit} from "lodash";
-import {authQueue} from "../../../global/queues/auth.queue";
+import {UserCache} from '../../user/redis/user.cache';
+import {omit} from 'lodash';
+import {authQueue} from '../queues/auth.queue';
+import {userQueue} from '../../user/queues/user.queue';
+import JWT from 'jsonwebtoken';
+import {envConfig} from '../../../config/env.config';
 
 const userCache : UserCache = new UserCache();
 
@@ -41,11 +44,26 @@ export class SignUp{
     await userCache.saveUserToCache(`${userObjectId}`, uId, userDataForCache);
 
     // Add to database
-    omit(userDataForCache, ['uId', 'username', 'email', 'avatarColor', 'password']);
-    authQueue.addAuthUserJob('addAuthUserToDB', {value : userDataForCache});
+    authQueue.addAuthUserJob('addAuthUserToDB', {value : authData });
+    userQueue.addUserJob('addUserToDB', {value : userDataForCache});
 
-    res.status(HTTP_STATUS.CREATED).json({message : 'user created successfully', data : authData});
+    const userJwt : string = SignUp.prototype.signToken(authData, userObjectId);
+    request.session = {jwt : userJwt};
+    res.status(HTTP_STATUS.CREATED).json({message : 'user created successfully', user : userDataForCache, token : userJwt});
 
+  }
+
+  private signToken(data : IAuthDocument, userObjectId : ObjectId) : string {
+    return JWT.sign(
+      {
+        userId : userObjectId,
+        uId : data.uId,
+        email : data.email,
+        username : data.username,
+        avatarColor : data.avatarColor
+      },
+      envConfig.JWT_SECRET_KEY
+    );
   }
   private signupData(data : ISignUpData) : IAuthDocument{
     const {_id, username, email, uId, password, avatarColor } = data;
