@@ -9,8 +9,10 @@ import {Helpers} from '../../../utility/helper.utility';
 import HTTP_STATUS from 'http-status-codes';
 import {IUserDocument} from '../../user/interface/user.interface';
 import {UserCache} from '../../../global/redis/user.cache';
+import {omit} from "lodash";
+import {authQueue} from "../../../global/queues/auth.queue";
 
- const userCache : UserCache = new UserCache();
+const userCache : UserCache = new UserCache();
 
 export class SignUp{
 
@@ -37,6 +39,10 @@ export class SignUp{
     const userDataForCache : IUserDocument = SignUp.prototype.userData(authData, userObjectId);
     userDataForCache.profilePicture = `user-image-${userObjectId}`;
     await userCache.saveUserToCache(`${userObjectId}`, uId, userDataForCache);
+
+    // Add to database
+    omit(userDataForCache, ['uId', 'username', 'email', 'avatarColor', 'password']);
+    authQueue.addAuthUserJob('addAuthUserToDB', {value : userDataForCache});
 
     res.status(HTTP_STATUS.CREATED).json({message : 'user created successfully', data : authData});
 
