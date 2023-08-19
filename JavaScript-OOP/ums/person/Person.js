@@ -31,5 +31,9 @@ class Person{
     set contact(value){
         this[_contact] = value;
     }
+
+    toString(){
+        return `${$this[_id]}, ${this[_name]}`;
+    }
 }
 module.exports = Person;
